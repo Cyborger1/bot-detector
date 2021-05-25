@@ -359,7 +359,7 @@ public class BotDetectorClient
 			this(gson, future, 0);
 		}
 
-		public PredictionCallback(Gson gson, CompletableFuture<Prediction> future, int retryCount)
+		private PredictionCallback(Gson gson, CompletableFuture<Prediction> future, int retryCount)
 		{
 			this.gson = gson;
 			this.future = future;
