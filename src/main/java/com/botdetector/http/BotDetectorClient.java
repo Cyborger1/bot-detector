@@ -51,6 +51,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
@@ -102,6 +103,9 @@ public class BotDetectorClient
 
 	@Inject
 	private GsonBuilder gsonBuilder;
+
+	@Inject
+	private ScheduledExecutorService scheduledExecutorService;
 
 	@Getter
 	@Setter
@@ -336,35 +340,87 @@ public class BotDetectorClient
 			.build();
 
 		CompletableFuture<Prediction> future = new CompletableFuture<>();
-		okHttpClient.newCall(request).enqueue(new Callback()
+		okHttpClient.newCall(request).enqueue(new PredictionCallback(gson, future));
+
+		return future;
+	}
+
+	private class PredictionCallback implements Callback
+	{
+		private final int MAX_RETRIES = 3;
+		private final int MILLIS_BEFORE_RETRY = 5000;
+
+		private final Gson gson;
+		private final CompletableFuture<Prediction> future;
+		private final int retryCount;
+
+		public PredictionCallback(Gson gson, CompletableFuture<Prediction> future)
 		{
-			@Override
-			public void onFailure(Call call, IOException e)
+			this(gson, future, 0);
+		}
+
+		public PredictionCallback(Gson gson, CompletableFuture<Prediction> future, int retryCount)
+		{
+			this.gson = gson;
+			this.future = future;
+			this.retryCount = retryCount;
+		}
+
+		@Override
+		public void onFailure(Call call, IOException e)
+		{
+			log.warn("Error obtaining player prediction data", e);
+			future.completeExceptionally(e);
+		}
+
+		@Override
+		public void onResponse(Call call, Response response)
+		{
+			int code = response.code();
+			if (code == 202 || code == 208)
+			{
+				response.close();
+				int newRetry = retryCount + 1;
+				if (newRetry > MAX_RETRIES)
+				{
+					IOException ioe = new IOException("Too many retries");
+					log.warn("Error obtaining player stats data", ioe);
+					future.completeExceptionally(ioe);
+					return;
+				}
+
+				log.debug("Received code {}, attempting retry {} soon", code, newRetry);
+				/*
+				try
+				{
+					Thread.sleep(MILLIS_BEFORE_RETRY);
+				}
+				catch (InterruptedException e)
+				{
+					log.debug("Error when waiting to retry getting prediction", e);
+					future.completeExceptionally(e);
+				}
+				*/
+				scheduledExecutorService.schedule(
+					() -> call.clone().enqueue(new PredictionCallback(gson, future, newRetry)),
+					MILLIS_BEFORE_RETRY, TimeUnit.MILLISECONDS);
+				return;
+			}
+
+			try
+			{
+				future.complete(processResponse(gson, response, Prediction.class));
+			}
+			catch (IOException e)
 			{
 				log.warn("Error obtaining player prediction data", e);
 				future.completeExceptionally(e);
 			}
-
-			@Override
-			public void onResponse(Call call, Response response)
+			finally
 			{
-				try
-				{
-					future.complete(processResponse(gson, response, Prediction.class));
-				}
-				catch (IOException e)
-				{
-					log.warn("Error obtaining player prediction data", e);
-					future.completeExceptionally(e);
-				}
-				finally
-				{
-					response.close();
-				}
+				response.close();
 			}
-		});
-
-		return future;
+		}
 	}
 
 	/**
