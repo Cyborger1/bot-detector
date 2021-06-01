@@ -36,6 +36,7 @@ import com.botdetector.model.PlayerStats;
 import com.botdetector.model.PlayerStatsType;
 import com.botdetector.model.FeedbackPredictionLabel;
 import com.botdetector.model.StatsCommandDetailLevel;
+import com.botdetector.overlays.DebugOverlay;
 import com.botdetector.ui.BotDetectorPanel;
 import com.botdetector.events.BotDetectorPanelActivated;
 import com.google.common.collect.EvictingQueue;
@@ -112,6 +113,7 @@ import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.task.Schedule;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.ColorUtil;
 import net.runelite.client.util.ImageUtil;
 import net.runelite.client.util.LinkBrowser;
@@ -166,6 +168,7 @@ public class BotDetectorPlugin extends Plugin
 	private static final String CLEAR_AUTH_TOKEN_COMMAND = COMMAND_PREFIX + "ClearToken";
 	private static final String TOGGLE_SHOW_DISCORD_VERIFICATION_ERRORS_COMMAND = COMMAND_PREFIX + "ToggleShowDiscordVerificationErrors";
 	private static final String TOGGLE_SHOW_DISCORD_VERIFICATION_ERRORS_COMMAND_ALIAS = COMMAND_PREFIX + "ToggleDVE";
+	private static final String SHOW_HIDE_DEBUG_OVERLAY_COMMAND = COMMAND_PREFIX + "ShowDebugOverlay";
 
 	/** Command to method map to be used in {@link #onCommandExecuted(CommandExecuted)}. **/
 	private final ImmutableMap<CaseInsensitiveString, Consumer<String[]>> commandConsumerMap =
@@ -179,6 +182,7 @@ public class BotDetectorPlugin extends Plugin
 			.put(wrap(CLEAR_AUTH_TOKEN_COMMAND), s -> clearAuthTokenCommand())
 			.put(wrap(TOGGLE_SHOW_DISCORD_VERIFICATION_ERRORS_COMMAND), s -> toggleShowDiscordVerificationErrors())
 			.put(wrap(TOGGLE_SHOW_DISCORD_VERIFICATION_ERRORS_COMMAND_ALIAS), s -> toggleShowDiscordVerificationErrors())
+			.put(wrap(SHOW_HIDE_DEBUG_OVERLAY_COMMAND), this::showHideDebugOverlayCommand)
 			.build();
 
 	private static final int MANUAL_FLUSH_COOLDOWN_SECONDS = 60;
@@ -222,6 +226,12 @@ public class BotDetectorPlugin extends Plugin
 
 	@Inject
 	private BotDetectorClient detectorClient;
+
+	@Inject
+	private DebugOverlay debugOverlay;
+
+	@Inject
+	private OverlayManager overlayManager;
 
 	private BotDetectorPanel panel;
 	private NavigationButton navButton;
@@ -363,6 +373,8 @@ public class BotDetectorPlugin extends Plugin
 
 		chatCommandManager.registerCommand(VERIFY_DISCORD_COMMAND, this::verifyDiscord);
 		chatCommandManager.registerCommand(STATS_CHAT_COMMAND, this::statsChatCommand);
+
+		overlayManager.add(debugOverlay);
 	}
 
 	@Override
@@ -393,6 +405,8 @@ public class BotDetectorPlugin extends Plugin
 
 		chatCommandManager.unregisterCommand(VERIFY_DISCORD_COMMAND);
 		chatCommandManager.unregisterCommand(STATS_CHAT_COMMAND);
+
+		overlayManager.remove(debugOverlay);
 	}
 
 	/**
@@ -1334,6 +1348,29 @@ public class BotDetectorPlugin extends Plugin
 		else
 		{
 			sendChatStatusMessage("Discord verification errors will no longer be shown in the chat", true);
+		}
+	}
+
+	/**
+	 * Shows or hides the plugin debug overlay, see {@link DebugOverlay}.
+	 * @param args String arguments from {@link CommandExecuted#getArguments()}, requires 1 argument being either "0" or "1".
+	 */
+	private void showHideDebugOverlayCommand(String[] args)
+	{
+		String arg = args.length > 0 ? args[0] : "";
+		switch (arg)
+		{
+			case "1":
+				debugOverlay.setOverlayActive(true);
+				sendChatStatusMessage("Debug overlay activated.", true);
+				break;
+			case "0":
+				debugOverlay.setOverlayActive(false);
+				sendChatStatusMessage("Debug overlay deactivated.", true);
+				break;
+			default:
+				sendChatStatusMessage("Argument must be 0 or 1.", true);
+				break;
 		}
 	}
 
