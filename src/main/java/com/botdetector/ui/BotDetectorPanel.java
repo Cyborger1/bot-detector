@@ -54,6 +54,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.inject.Inject;
 import javax.swing.Icon;
@@ -120,7 +121,7 @@ public class BotDetectorPanel extends PluginPanel
 	}
 
 	private static final int MAX_RSN_LENGTH = 12;
-	private static final Pattern VALID_RSN_PATTERN = Pattern.compile("^[ _\\-]*[a-zA-Z0-9][\\w\\- ]*$");
+	private static final Pattern VALID_RSN_PATTERN = Pattern.compile("^[ _\\-]*([a-zA-Z\\d](?:[a-zA-Z\\d]|[ _\\-](?![ _\\-]|$))*)[ _\\-]*$");
 	private static final Font BOLD_FONT = FontManager.getRunescapeBoldFont();
 	private static final Font NORMAL_FONT = FontManager.getRunescapeFont();
 	private static final Font SMALL_FONT = FontManager.getRunescapeSmallFont();
@@ -1160,7 +1161,9 @@ public class BotDetectorPanel extends PluginPanel
 				"Name cannot be longer than " + MAX_RSN_LENGTH + " characters");
 			return;
 		}
-		else if (!isValidPlayerName(target))
+
+		String validName = extractValidPlayerName(target);
+		if (validName == null)
 		{
 			searchBar.setIcon(IconTextField.Icon.ERROR);
 			searchBarLoading = false;
@@ -1176,10 +1179,11 @@ public class BotDetectorPanel extends PluginPanel
 
 		setPrediction(null);
 
-		detectorClient.requestPrediction(target).whenCompleteAsync((pred, ex) ->
+		detectorClient.requestPrediction(validName).whenCompleteAsync((pred, ex) ->
 			SwingUtilities.invokeLater(() ->
 			{
-				if (!sanitize(searchBar.getText()).equals(target))
+				String barText = sanitize(searchBar.getText());
+				if (!barText.equals(target) && !barText.equals(validName))
 				{
 					// Target has changed in the meantime
 					return;
@@ -1478,18 +1482,25 @@ public class BotDetectorPanel extends PluginPanel
 	}
 
 	/**
-	 * Checks if the given player name is a valid Jagex name.
-	 * @param playerName The player name to check.
-	 * @return True if the name is valid, false otherwise.
+	 * Checks for and extracts a valid jagex player name from the given string,
+	 * according to {@link #MAX_RSN_LENGTH} and {@link #VALID_RSN_PATTERN}.
+	 * @param playerName The string containing the player name to extract.
+	 * @return The extracted valid name from the string, null otherwise.
 	 */
-	private static boolean isValidPlayerName(String playerName)
+	private static String extractValidPlayerName(String playerName)
 	{
 		if (playerName == null || playerName.length() > MAX_RSN_LENGTH)
 		{
-			return false;
+			return null;
 		}
 
-		return VALID_RSN_PATTERN.matcher(playerName).matches();
+		Matcher matcher = VALID_RSN_PATTERN.matcher(playerName);
+		if (!matcher.matches())
+		{
+			return null;
+		}
+
+		return matcher.group(1);
 	}
 
 	/**
