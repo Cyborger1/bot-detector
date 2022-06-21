@@ -69,6 +69,7 @@ import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
 import javax.swing.SwingUtilities;
 import javax.swing.border.Border;
 import javax.swing.border.EmptyBorder;
@@ -162,6 +163,8 @@ public class BotDetectorPanel extends PluginPanel
 	private static final FeedbackPredictionLabel SOMETHING_ELSE_PREDICTION_LABEL = new FeedbackPredictionLabel("Something_else", null, FeedbackValue.NEGATIVE);
 	private static final FeedbackPredictionLabel CORRECT_FALLBACK_PREDICTION_LABEL = new FeedbackPredictionLabel("Correct", null, FeedbackValue.POSITIVE);
 
+	private static final Dimension LAST_ERROR_TEXTBOX_PREFERRED_SIZE = new Dimension(0, 150);
+
 	private static final PlayerStatsType[] PLAYER_STAT_TYPES = {
 		PlayerStatsType.TOTAL, PlayerStatsType.PASSIVE, PlayerStatsType.MANUAL
 	};
@@ -173,6 +176,7 @@ public class BotDetectorPanel extends PluginPanel
 	private final JPanel predictionFeedbackPanel;
 	private final JPanel predictionFlaggingPanel;
 	private final JPanel predictionBreakdownPanel;
+	private final JPanel lastErrorPanel;
 
 	private final BotDetectorPlugin plugin;
 	private final BotDetectorClient detectorClient;
@@ -226,6 +230,14 @@ public class BotDetectorPanel extends PluginPanel
 	private PlayerSighting lastPredictionPlayerSighting;
 	private String lastPredictionUploaderName;
 
+	// Last API error panel
+	private JLabel lastErrorHeaderLabel;
+	private JLabel lastErrorOperationLabel;
+	private JLabel lastErrorTimeLabel;
+	private JTextArea lastErrorDescriptionTextArea;
+	private JScrollPane lastErrorDescriptionScrollPane;
+	private JButton lastErrorDismissButton;
+
 	@Inject
 	public BotDetectorPanel(
 		BotDetectorPlugin plugin,
@@ -258,6 +270,8 @@ public class BotDetectorPanel extends PluginPanel
 		predictionFlaggingPanel.setVisible(false);
 		predictionBreakdownPanel = putInBoxPanelWithVerticalSeparator(predictionBreakdownPanel());
 		predictionBreakdownPanel.setVisible(false);
+		lastErrorPanel = putInBoxPanelWithVerticalSeparator(lastErrorPanel());
+		lastErrorPanel.setVisible(true);
 
 		add(linksPanel);
 
@@ -275,6 +289,8 @@ public class BotDetectorPanel extends PluginPanel
 		add(predictionFeedbackPanel);
 
 		add(predictionFlaggingPanel);
+
+		add(lastErrorPanel);
 
 		setPlayerIdVisible(false);
 		setPrediction(null);
@@ -874,6 +890,102 @@ public class BotDetectorPanel extends PluginPanel
 		switchableFontComponents.add(predictionBreakdownLabel);
 
 		return predictionBreakdownPanel;
+	}
+
+	/**
+	 * Generates and sets variables related to the last error panel.
+	 * @return The panel containing all the related elements.
+	 */
+	private JPanel lastErrorPanel()
+	{
+		JPanel panel = new JPanel();
+		panel.setBackground(SUB_BACKGROUND_COLOR);
+		panel.setLayout(new GridBagLayout());
+		panel.setBorder(SUB_PANEL_BORDER);
+
+		GridBagConstraints c = new GridBagConstraints();
+		c.fill = GridBagConstraints.HORIZONTAL;
+
+		lastErrorHeaderLabel = new JLabel("Last Error Info");
+		lastErrorHeaderLabel.setHorizontalTextPosition(JLabel.LEFT);
+		lastErrorHeaderLabel.setFont(BOLD_FONT);
+		lastErrorHeaderLabel.setForeground(HEADER_COLOR);
+		lastErrorHeaderLabel.setPreferredSize(HEADER_PREFERRED_SIZE);
+		lastErrorHeaderLabel.setMinimumSize(HEADER_PREFERRED_SIZE);
+		c.gridx = 0;
+		c.gridy = 0;
+		c.ipady = HEADER_PAD;
+		c.gridwidth = 2;
+		c.weightx = 1;
+		c.anchor = GridBagConstraints.NORTH;
+		panel.add(lastErrorHeaderLabel, c);
+
+		JLabel label;
+
+		label = new JLabel("Op: ");
+		label.setToolTipText("What operation had an issue.");
+		label.setForeground(TEXT_COLOR);
+
+		c.gridx = 0;
+		c.gridy++;
+		c.ipady = VALUE_PAD;
+		c.gridwidth = 1;
+		c.weightx = 0;
+		panel.add(label, c);
+
+		lastErrorOperationLabel = new JLabel();
+		lastErrorOperationLabel.setForeground(VALUE_COLOR);
+		c.gridx = 1;
+		c.weightx = 1;
+		panel.add(lastErrorOperationLabel, c);
+
+		label = new JLabel("When: ");
+		label.setToolTipText("When the issue happened.");
+		label.setForeground(TEXT_COLOR);
+
+		c.gridx = 0;
+		c.gridy++;
+		c.ipady = VALUE_PAD;
+		c.weightx = 0;
+		panel.add(label, c);
+
+		lastErrorTimeLabel = new JLabel();
+		lastErrorTimeLabel.setForeground(VALUE_COLOR);
+		c.gridx = 1;
+		c.weightx = 1;
+		panel.add(lastErrorTimeLabel, c);
+
+		lastErrorDescriptionTextArea = new JTextArea();
+		lastErrorDescriptionTextArea.setForeground(HEADER_COLOR);
+		lastErrorDescriptionTextArea.setBackground(BACKGROUND_COLOR);
+		lastErrorDescriptionTextArea.setFont(SMALL_FONT);
+		lastErrorDescriptionTextArea.setWrapStyleWord(true);
+		lastErrorDescriptionTextArea.setLineWrap(true);
+		lastErrorDescriptionTextArea.setTabSize(2);
+		lastErrorDescriptionTextArea.setEditable(false);
+		lastErrorDescriptionTextArea.setBorder(new EmptyBorder(2, 2, 2, 2));
+		lastErrorDescriptionScrollPane = new JScrollPane(lastErrorDescriptionTextArea);
+		lastErrorDescriptionScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
+		lastErrorDescriptionScrollPane.setPreferredSize(LAST_ERROR_TEXTBOX_PREFERRED_SIZE);
+		lastErrorDescriptionScrollPane.setMinimumSize(LAST_ERROR_TEXTBOX_PREFERRED_SIZE);
+		lastErrorDescriptionScrollPane.setBorder(new EmptyBorder(0, 0, 10, 0));
+		lastErrorDescriptionScrollPane.setOpaque(false);
+		c.gridx = 0;
+		c.gridy++;
+		c.gridwidth = 2;
+		panel.add(lastErrorDescriptionScrollPane, c);
+
+		lastErrorDismissButton = new JButton("Dismiss");
+		lastErrorDismissButton.setForeground(HEADER_COLOR);
+		lastErrorDismissButton.setFont(SMALL_FONT);
+		//feedbackSendButton.addActionListener(l -> sendFeedbackToClient((FeedbackPredictionLabel)feedbackLabelComboBox.getSelectedItem()));
+		lastErrorDismissButton.setFocusable(false);
+		c.gridy++;
+		c.gridx = 0;
+		c.weightx = 1;
+		panel.add(lastErrorDismissButton, c);
+
+		return panel;
 	}
 
 	/**
