@@ -1095,7 +1095,15 @@ public class BotDetectorPanel extends PluginPanel
 			predictionPlayerIdLabel.setText(String.valueOf(pred.getPlayerId()));
 			predictionPlayerNameLabel.setText(wrapHTML(pred.getPlayerName()));
 			predictionTypeLabel.setText(wrapHTML(normalizeLabel(pred.getPredictionLabel())));
-			predictionConfidenceLabel.setText(wrapHTML(toColoredPercentSpan(pred.getConfidence()), false));
+
+			if (pred.getConfidence() != null)
+			{
+				predictionConfidenceLabel.setText(wrapHTML(toColoredPercentSpan(pred.getConfidence()), false));
+			}
+			else
+			{
+				predictionConfidenceLabel.setText(EMPTY_LABEL);
+			}
 
 			feedbackLabelComboBox.addItem(UNSURE_PREDICTION_LABEL);
 			feedbackLabelComboBox.setSelectedItem(UNSURE_PREDICTION_LABEL);
@@ -1297,7 +1305,7 @@ public class BotDetectorPanel extends PluginPanel
 					p = Prediction.builder()
 						.playerName(target)
 						.playerId(-1) // Prevents feedback panel from appearing
-						.confidence(0.0)
+						.confidence(null)
 						.predictionBreakdown(null)
 						.predictionLabel("Player not found")
 						.build();

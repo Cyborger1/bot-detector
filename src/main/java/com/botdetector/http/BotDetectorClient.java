@@ -665,7 +665,7 @@ public class BotDetectorClient
 		@SerializedName("prediction")
 		String predictionLabel;
 		@SerializedName("confidence")
-		double predictionConfidence;
+		Double predictionConfidence;
 		@SerializedName("subject_id")
 		long targetId;
 		@SerializedName("proposed_label")
