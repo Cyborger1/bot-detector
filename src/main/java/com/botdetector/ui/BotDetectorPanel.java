@@ -1109,7 +1109,8 @@ public class BotDetectorPanel extends PluginPanel
 			feedbackLabelComboBox.setSelectedItem(UNSURE_PREDICTION_LABEL);
 			feedbackLabelComboBox.addItem(SOMETHING_ELSE_PREDICTION_LABEL);
 
-			if (pred.getPredictionBreakdown() == null || pred.getPredictionBreakdown().size() == 0)
+			if (pred.getPredictionBreakdown() == null || pred.getPredictionBreakdown().size() == 0
+				|| (pred.getConfidence() == null && config.showSpecialBreakdown()))
 			{
 				predictionBreakdownLabel.setText(EMPTY_LABEL);
 				predictionBreakdownPanel.setVisible(false);
