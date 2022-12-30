@@ -104,6 +104,7 @@ import net.runelite.client.chat.ChatMessageBuilder;
 import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.config.RuneScapeProfile;
 import net.runelite.client.config.RuneScapeProfileType;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ClientShutdown;
@@ -243,6 +244,8 @@ public class BotDetectorPlugin extends Plugin
 		return configManager.getConfig(BotDetectorConfig.class);
 	}
 
+	/** The currently logged in player's account hash, or {@code null} if the user is logged out. **/
+	private Long accountHash;
 	/** The currently logged in player name, or {@code null} if the user is logged out. **/
 	@Getter
 	private String loggedPlayerName;
@@ -368,6 +371,10 @@ public class BotDetectorPlugin extends Plugin
 		panel.shutdown();
 
 		flushPlayersToClient(false);
+		if (config.persistFlagged())
+		{
+			saveFlaggedFeedbacked();
+		}
 		persistentSightings.clear();
 		flaggedFeedbackedPlayers.clear();
 
@@ -380,6 +387,7 @@ public class BotDetectorPlugin extends Plugin
 
 		namesUploaded = 0;
 		loggedPlayerName = null;
+		accountHash = null;
 		lastFlush = Instant.MIN;
 		lastStatsRefresh = Instant.MIN;
 		authToken = AuthToken.EMPTY_TOKEN;
@@ -631,9 +639,14 @@ public class BotDetectorPlugin extends Plugin
 				if (loggedPlayerName != null)
 				{
 					flushPlayersToClient(false);
+					if (config.persistFlagged())
+					{
+						saveFlaggedFeedbacked();
+					}
 					persistentSightings.clear();
 					flaggedFeedbackedPlayers.clear();
 					loggedPlayerName = null;
+					accountHash = null;
 
 					refreshPlayerStats(true);
 					SwingUtilities.invokeLater(() -> panel.setWarningVisible(BotDetectorPanel.WarningLabel.NAME_ERROR, false));
@@ -681,6 +694,7 @@ public class BotDetectorPlugin extends Plugin
 				if (invalidName)
 				{
 					loggedPlayerName = null;
+					accountHash = null;
 					SwingUtilities.invokeLater(() -> panel.setWarningVisible(BotDetectorPanel.WarningLabel.NAME_ERROR, true));
 				}
 				else
@@ -689,6 +703,12 @@ public class BotDetectorPlugin extends Plugin
 					updateTimeToAutoSend();
 					refreshPlayerStats(true);
 					SwingUtilities.invokeLater(() -> panel.setWarningVisible(BotDetectorPanel.WarningLabel.NAME_ERROR, false));
+
+					accountHash = client.getAccountHash();
+					if (config.persistFlagged())
+					{
+						loadFlaggedFeedbacked();
+					}
 				}
 			}
 			return;
@@ -1198,34 +1218,45 @@ public class BotDetectorPlugin extends Plugin
 		return prepend != null ? ColorUtil.prependColorTag(option, prepend) : option;
 	}
 
-	private void saveFlaggedFeedbacked()
+	private boolean saveFlaggedFeedbacked()
 	{
-		if (isCurrentWorldBlocked)
+		if (accountHash == null || accountHash == RuneScapeProfile.ACCOUNT_HASH_INVALID)
 		{
-			return;
+			return false;
 		}
 
 		Map<String, PersistentFlagFeedbackModel> flagsToPersist =
-			flaggedFeedbackedPlayers.entrySet().stream().collect(Collectors.toMap(
-				e -> e.getKey().getStr(),
-				Map.Entry::getValue));
+			flaggedFeedbackedPlayers.entrySet().stream()
+				.filter(e -> !e.getValue().isEmpty())
+				.collect(Collectors.toMap(
+					e -> e.getKey().getStr(),
+					Map.Entry::getValue));
 
-		System.out.println("Saving Persistent");
+
+
+		System.out.println("Saving Persistent - " + BotDetectorConfig.PERSISTED_FLAGGED_KEY + "." + accountHash);
 		System.out.println(gson.newBuilder().setPrettyPrinting().create().toJson(flagsToPersist));
 
-		configManager.setRSProfileConfiguration(
+		configManager.setConfiguration(
 			BotDetectorConfig.CONFIG_GROUP,
-			BotDetectorConfig.PERSISTED_FLAGGED_KEY,
+			BotDetectorConfig.PERSISTED_FLAGGED_KEY + "." + accountHash,
 			gson.toJson(flagsToPersist));
+
+		return true;
 	}
 
-	private void loadFlaggedFeedbacked()
+	private boolean loadFlaggedFeedbacked()
 	{
+		if (accountHash == null || accountHash == RuneScapeProfile.ACCOUNT_HASH_INVALID)
+		{
+			return false;
+		}
+
 		String json = configManager.getConfiguration(
 			BotDetectorConfig.CONFIG_GROUP,
-			BotDetectorConfig.PERSISTED_FLAGGED_KEY + "." + client.getAccountHash());
+			BotDetectorConfig.PERSISTED_FLAGGED_KEY + "." + accountHash);
 
-		System.out.println("Loading Persistent");
+		System.out.println("Loading Persistent - " + BotDetectorConfig.PERSISTED_FLAGGED_KEY + "." + accountHash);
 		System.out.println(json);
 
 		Map<String, PersistentFlagFeedbackModel> persistentData;
@@ -1236,7 +1267,12 @@ public class BotDetectorPlugin extends Plugin
 		catch (Exception e)
 		{
 			// TODO: Log
-			return;
+			return false;
+		}
+
+		if (persistentData == null)
+		{
+			return true;
 		}
 
 		Instant sevenDaysAgo = Instant.now().minus(7, ChronoUnit.DAYS);
@@ -1248,6 +1284,8 @@ public class BotDetectorPlugin extends Plugin
 					flaggedFeedbackedPlayers.putIfAbsent(normalizeAndWrapPlayerName(k), v);
 				}
 			});
+
+		return true;
 	}
 
 	/**

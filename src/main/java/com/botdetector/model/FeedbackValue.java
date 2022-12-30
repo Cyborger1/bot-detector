@@ -25,6 +25,7 @@
  */
 package com.botdetector.model;
 
+import com.google.gson.annotations.SerializedName;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
@@ -32,8 +33,11 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum FeedbackValue
 {
+	@SerializedName("p")
 	POSITIVE(1),
+	@SerializedName("n")
 	NEGATIVE(-1),
+	@SerializedName("ne")
 	NEUTRAL(0)
 	;
 

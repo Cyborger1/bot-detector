@@ -1338,7 +1338,6 @@ public class BotDetectorPanel extends PluginPanel
 			.computeIfAbsent(wrappedName, k -> new PersistentFlagFeedbackModel());
 
 		FeedbackPredictionLabel previousFeedback = feedbackInfo.getFeedback();
-		Instant previousModified = feedbackInfo.getLastModified();
 		feedbackInfo.setFeedback(proposedLabel);
 		feedbackInfo.setLastModified(Instant.now());
 
@@ -1376,7 +1375,6 @@ public class BotDetectorPanel extends PluginPanel
 					message = "Error sending your prediction feedback for '%s'.";
 					// Didn't work so remove from feedback map
 					feedbackInfo.setFeedback(previousFeedback);
-					feedbackInfo.setLastModified(previousModified);
 					if (stillSame)
 					{
 						resetFeedbackPanel(false);
@@ -1413,7 +1411,6 @@ public class BotDetectorPanel extends PluginPanel
 			.computeIfAbsent(wrappedName, k -> new PersistentFlagFeedbackModel());
 
 		FlagResponse previousFlag = feedbackInfo.getFlag();
-		Instant previousModified = feedbackInfo.getLastModified();
 		feedbackInfo.setFlag(flag);
 		feedbackInfo.setLastModified(Instant.now());
 
@@ -1447,7 +1444,6 @@ public class BotDetectorPanel extends PluginPanel
 					message = "Error sending your bot flag for '%s'.";
 					// Didn't work so remove from flagged map
 					feedbackInfo.setFlag(previousFlag);
-					feedbackInfo.setLastModified(previousModified);
 					if (stillSame)
 					{
 						resetFlaggingPanel();

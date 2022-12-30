@@ -9,7 +9,10 @@ import lombok.experimental.Accessors;
 @RequiredArgsConstructor
 public enum FlagResponse
 {
+	@SerializedName("u")
 	UNFLAGGED,
+	@SerializedName("b")
 	BOT,
+	@SerializedName("n")
 	NOT_BOT
 }

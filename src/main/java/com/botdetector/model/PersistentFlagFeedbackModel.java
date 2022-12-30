@@ -25,6 +25,7 @@
  */
 package com.botdetector.model;
 
+import com.google.gson.annotations.SerializedName;
 import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -35,9 +36,13 @@ public class PersistentFlagFeedbackModel
 {
 	public static PersistentFlagFeedbackModel EMPTY_MODEL = new PersistentFlagFeedbackModel();
 
+	@SerializedName("f")
 	private FlagResponse flag;
+	@SerializedName("l")
 	private FeedbackPredictionLabel feedback;
+	@SerializedName("t")
 	private String feedbackText;
+	@SerializedName("i")
 	private Instant lastModified;
 
 	public PersistentFlagFeedbackModel()
@@ -48,5 +53,10 @@ public class PersistentFlagFeedbackModel
 	public boolean isValid()
 	{
 		return flag != null && flag != FlagResponse.UNFLAGGED && feedback != null;
+	}
+
+	public boolean isEmpty()
+	{
+		return !isValid() && feedbackText == null && lastModified == null;
 	}
 }

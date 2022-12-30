@@ -25,6 +25,7 @@
  */
 package com.botdetector.model;
 
+import com.google.gson.annotations.SerializedName;
 import java.util.Objects;
 import lombok.Value;
 import org.apache.commons.text.WordUtils;
@@ -32,9 +33,13 @@ import org.apache.commons.text.WordUtils;
 @Value
 public class FeedbackPredictionLabel
 {
+	@SerializedName("l")
 	String label;
+	@SerializedName("n")
 	String normalizedLabel;
+	@SerializedName("v")
 	FeedbackValue feedbackValue;
+	@SerializedName("c")
 	Double labelConfidence;
 
 	public FeedbackPredictionLabel(String label, Double labelConfidence, FeedbackValue feedbackValue)
