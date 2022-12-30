@@ -50,8 +50,7 @@ public interface BotDetectorConfig extends Config
 	String SHOW_DISCORD_VERIFICATION_ERRORS = "showDiscordVerificationErrors";
 	String ANONYMOUS_UUID_KEY = "anonymousUUID";
 	String PERSIST_FLAGGED_KEY = "persistFlagged";
-	String PERSISTED_FLAGGED_KEY = "flaggedNames";
-	String PERSISTED_FEEDBACK_KEY = "feedbackedNames";
+	String PERSISTED_FLAGGED_KEY = "persistedFlagged";
 
 	int AUTO_SEND_MINIMUM_MINUTES = 5;
 	int AUTO_SEND_MAXIMUM_MINUTES = 360;

@@ -32,11 +32,11 @@ import com.botdetector.model.AuthToken;
 import com.botdetector.model.AuthTokenPermission;
 import com.botdetector.model.AuthTokenType;
 import com.botdetector.model.CaseInsensitiveString;
-import com.botdetector.model.FeedbackValue;
+import com.botdetector.model.FlagResponse;
+import com.botdetector.model.PersistentFlagFeedbackModel;
 import com.botdetector.model.PlayerSighting;
 import com.botdetector.model.PlayerStats;
 import com.botdetector.model.PlayerStatsType;
-import com.botdetector.model.FeedbackPredictionLabel;
 import com.botdetector.model.StatsCommandDetailLevel;
 import com.botdetector.ui.BotDetectorPanel;
 import com.botdetector.events.BotDetectorPanelActivated;
@@ -60,7 +60,6 @@ import java.text.DecimalFormat;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.time.temporal.TemporalAmount;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
@@ -125,7 +124,6 @@ import net.runelite.client.util.Text;
 import com.google.inject.Provides;
 import org.apache.commons.lang3.StringUtils;
 import static com.botdetector.model.CaseInsensitiveString.wrap;
-import org.apache.commons.lang3.tuple.ImmutablePair;
 
 @Slf4j
 @PluginDescriptor(
@@ -290,25 +288,11 @@ public class BotDetectorPlugin extends Plugin
 	private final Map<CaseInsensitiveString, PlayerSighting> persistentSightings = new ConcurrentHashMap<>();
 
 	/**
-	 * Contains the feedbacks (See {@link FeedbackPredictionLabel}) sent per {@code player} for the current login session.
+	 * Contains the persistent feedback and flag info sent per {@code player} for the current login session.
 	 * Always use {@link #normalizeAndWrapPlayerName(String)} when keying into this map.
 	 */
 	@Getter
-	private final Map<CaseInsensitiveString, FeedbackPredictionLabel> feedbackedPlayers = new ConcurrentHashMap<>();
-
-	/**
-	 * Contains the feedback texts sent per {@code player} for the current login session.
-	 * Always use {@link #normalizeAndWrapPlayerName(String)} when keying into this map.
-	 */
-	@Getter
-	private final Map<CaseInsensitiveString, String> feedbackedPlayersText = new ConcurrentHashMap<>();
-
-	/**
-	 * Contains the flagging (yes/no) sent per {@code player} for the current login session.
-	 * Always use {@link #normalizeAndWrapPlayerName(String)} when keying into this map.
-	 */
-	@Getter
-	private final Map<CaseInsensitiveString, Boolean> flaggedPlayers = new ConcurrentHashMap<>();
+	private final Map<CaseInsensitiveString, PersistentFlagFeedbackModel> flaggedFeedbackedPlayers = new ConcurrentHashMap<>();
 
 	@Override
 	protected void startUp()
@@ -385,9 +369,7 @@ public class BotDetectorPlugin extends Plugin
 
 		flushPlayersToClient(false);
 		persistentSightings.clear();
-		feedbackedPlayers.clear();
-		feedbackedPlayersText.clear();
-		flaggedPlayers.clear();
+		flaggedFeedbackedPlayers.clear();
 
 		if (client != null)
 		{
@@ -650,9 +632,7 @@ public class BotDetectorPlugin extends Plugin
 				{
 					flushPlayersToClient(false);
 					persistentSightings.clear();
-					feedbackedPlayers.clear();
-					feedbackedPlayersText.clear();
-					flaggedPlayers.clear();
+					flaggedFeedbackedPlayers.clear();
 					loggedPlayerName = null;
 
 					refreshPlayerStats(true);
@@ -1211,7 +1191,8 @@ public class BotDetectorPlugin extends Plugin
 	private String getMenuOption(String playerName, String option)
 	{
 		CaseInsensitiveString name = normalizeAndWrapPlayerName(playerName);
-		Color prepend = (feedbackedPlayers.containsKey(name) || flaggedPlayers.containsKey(name)) ?
+		PersistentFlagFeedbackModel playerModel = flaggedFeedbackedPlayers.get(name);
+		Color prepend = (playerModel != null && playerModel.isValid()) ?
 			config.predictOptionFlaggedColor() : config.predictOptionDefaultColor();
 
 		return prepend != null ? ColorUtil.prependColorTag(option, prepend) : option;
@@ -1224,73 +1205,49 @@ public class BotDetectorPlugin extends Plugin
 			return;
 		}
 
-		Instant now = Instant.now();
-		Map<String, ImmutablePair<Boolean, Instant>> flagsToPersist =
-			flaggedPlayers.entrySet().stream().collect(Collectors.toMap(
+		Map<String, PersistentFlagFeedbackModel> flagsToPersist =
+			flaggedFeedbackedPlayers.entrySet().stream().collect(Collectors.toMap(
 				e -> e.getKey().getStr(),
-				e -> new ImmutablePair<>(e.getValue(), now)));
+				Map.Entry::getValue));
 
-		configManager.setRSProfileConfiguration(BotDetectorConfig.CONFIG_GROUP, BotDetectorConfig.PERSISTED_FLAGGED_KEY, gson.toJson(flagsToPersist));
+		System.out.println("Saving Persistent");
+		System.out.println(gson.newBuilder().setPrettyPrinting().create().toJson(flagsToPersist));
+
+		configManager.setRSProfileConfiguration(
+			BotDetectorConfig.CONFIG_GROUP,
+			BotDetectorConfig.PERSISTED_FLAGGED_KEY,
+			gson.toJson(flagsToPersist));
 	}
 
 	private void loadFlaggedFeedbacked()
 	{
-		Map<String, ImmutablePair<Boolean, Instant>> flagged = retrieveFlagged();
-		Map<String, ImmutablePair<FeedbackPredictionLabel, Instant>> feedback = retrieveFeedbacks();
+		String json = configManager.getConfiguration(
+			BotDetectorConfig.CONFIG_GROUP,
+			BotDetectorConfig.PERSISTED_FLAGGED_KEY + "." + client.getAccountHash());
+
+		System.out.println("Loading Persistent");
+		System.out.println(json);
+
+		Map<String, PersistentFlagFeedbackModel> persistentData;
+		try
+		{
+			persistentData = gson.fromJson(json, new TypeToken<Map<String, PersistentFlagFeedbackModel>>(){}.getType());
+		}
+		catch (Exception e)
+		{
+			// TODO: Log
+			return;
+		}
 
 		Instant sevenDaysAgo = Instant.now().minus(7, ChronoUnit.DAYS);
 
-		if (flagged != null)
-		{
-			flagged.forEach((k, v) ->
+		persistentData.forEach((k, v) ->
 			{
-				if (sevenDaysAgo.isBefore(v.getValue()))
+				if (sevenDaysAgo.isBefore(v.getLastModified()))
 				{
-					flaggedPlayers.putIfAbsent(wrap(k), v.getKey());
+					flaggedFeedbackedPlayers.putIfAbsent(normalizeAndWrapPlayerName(k), v);
 				}
 			});
-		}
-
-		if (feedback != null)
-		{
-			feedback.forEach((k, v) ->
-			{
-				if (sevenDaysAgo.isBefore(v.getValue()))
-				{
-					feedbackedPlayers.putIfAbsent(wrap(k), v.getKey());
-				}
-			});
-		}
-	}
-
-	private Map<String, ImmutablePair<Boolean, Instant>> retrieveFlagged()
-	{
-		String json = configManager.getConfiguration(BotDetectorConfig.CONFIG_GROUP,
-			BotDetectorConfig.PERSISTED_FLAGGED_KEY + "." + client.getAccountHash());
-
-		try
-		{
-			return gson.fromJson(json, new TypeToken<Map<String, ImmutablePair<Boolean, Instant>>>(){}.getType());
-		}
-		catch (Exception e)
-		{
-			return null;
-		}
-	}
-
-	private Map<String, ImmutablePair<FeedbackPredictionLabel, Instant>> retrieveFeedbacks()
-	{
-		String json = configManager.getConfiguration(BotDetectorConfig.CONFIG_GROUP,
-			BotDetectorConfig.PERSISTED_FEEDBACK_KEY + "." + client.getAccountHash());
-
-		try
-		{
-			return gson.fromJson(json, new TypeToken<Map<String, ImmutablePair<FeedbackPredictionLabel, Instant>>>(){}.getType());
-		}
-		catch (Exception e)
-		{
-			return null;
-		}
 	}
 
 	/**

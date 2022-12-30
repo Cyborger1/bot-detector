@@ -34,6 +34,8 @@ import com.botdetector.model.CaseInsensitiveString;
 import com.botdetector.model.FeedbackValue;
 import com.botdetector.model.FeedbackPredictionLabel;
 import static com.botdetector.model.FeedbackPredictionLabel.normalizeLabel;
+import com.botdetector.model.FlagResponse;
+import com.botdetector.model.PersistentFlagFeedbackModel;
 import com.botdetector.model.PlayerSighting;
 import com.botdetector.model.PlayerStats;
 import com.botdetector.model.PlayerStatsType;
@@ -52,6 +54,7 @@ import java.awt.event.KeyListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.text.DecimalFormat;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -1139,6 +1142,7 @@ public class BotDetectorPanel extends PluginPanel
 			{
 				resetFeedbackPanel(true);
 				CaseInsensitiveString name = normalizeAndWrapPlayerName(pred.getPlayerName());
+				PersistentFlagFeedbackModel flagFeedback = plugin.getFlaggedFeedbackedPlayers().getOrDefault(name, PersistentFlagFeedbackModel.EMPTY_MODEL);
 				if (pred.getPlayerId() <= 0)
 				{
 					predictionFeedbackPanel.setVisible(false);
@@ -1146,7 +1150,7 @@ public class BotDetectorPanel extends PluginPanel
 				else
 				{
 					// If the player has already been feedbacked, ensure the panels reflect this
-					FeedbackPredictionLabel feedbacked = plugin.getFeedbackedPlayers().get(name);
+					FeedbackPredictionLabel feedbacked = flagFeedback.getFeedback();
 
 					if (feedbacked != null)
 					{
@@ -1154,7 +1158,7 @@ public class BotDetectorPanel extends PluginPanel
 					}
 
 					// If there was some feedback text from a previous send, either successful or failed
-					String feedbackText = plugin.getFeedbackedPlayersText().get(name);
+					String feedbackText = flagFeedback.getFeedbackText();
 					if (feedbackText != null)
 					{
 						feedbackTextbox.setText(feedbackText);
@@ -1171,8 +1175,8 @@ public class BotDetectorPanel extends PluginPanel
 				else
 				{
 					// If the player has already been flagged, ensure the panels reflect this
-					Boolean flagged = plugin.getFlaggedPlayers().get(name);
-					if (flagged != null)
+					FlagResponse flagged = flagFeedback.getFlag();
+					if (flagged != FlagResponse.UNFLAGGED)
 					{
 						disableAndSetColorOnFlaggingPanel(flagged);
 					}
@@ -1330,8 +1334,13 @@ public class BotDetectorPanel extends PluginPanel
 		disableAndSetComboBoxOnFeedbackPanel(proposedLabel, false);
 
 		CaseInsensitiveString wrappedName = normalizeAndWrapPlayerName(lastPrediction.getPlayerName());
-		Map<CaseInsensitiveString, FeedbackPredictionLabel> feedbackMap = plugin.getFeedbackedPlayers();
-		feedbackMap.put(wrappedName, proposedLabel);
+		final PersistentFlagFeedbackModel feedbackInfo = plugin.getFlaggedFeedbackedPlayers()
+			.computeIfAbsent(wrappedName, k -> new PersistentFlagFeedbackModel());
+
+		FeedbackPredictionLabel previousFeedback = feedbackInfo.getFeedback();
+		Instant previousModified = feedbackInfo.getLastModified();
+		feedbackInfo.setFeedback(proposedLabel);
+		feedbackInfo.setLastModified(Instant.now());
 
 		String feedbackText = feedbackTextbox.getText().trim();
 		if (feedbackText.isEmpty())
@@ -1341,7 +1350,7 @@ public class BotDetectorPanel extends PluginPanel
 		else
 		{
 			// Will not get reset upon send failure, so don't need to keep reference
-			plugin.getFeedbackedPlayersText().put(wrappedName, feedbackText);
+			feedbackInfo.setFeedbackText(feedbackText);
 		}
 
 		feedbackHeaderLabel.setIcon(Icons.LOADING_SPINNER);
@@ -1366,7 +1375,8 @@ public class BotDetectorPanel extends PluginPanel
 				{
 					message = "Error sending your prediction feedback for '%s'.";
 					// Didn't work so remove from feedback map
-					feedbackMap.remove(wrappedName);
+					feedbackInfo.setFeedback(previousFeedback);
+					feedbackInfo.setLastModified(previousModified);
 					if (stillSame)
 					{
 						resetFeedbackPanel(false);
@@ -1385,20 +1395,30 @@ public class BotDetectorPanel extends PluginPanel
 	 */
 	private void sendFlagToClient(boolean doFlag)
 	{
+		sendFlagToClient(doFlag ? FlagResponse.BOT : FlagResponse.NOT_BOT);
+	}
+
+	private void sendFlagToClient(FlagResponse flag)
+	{
 		if (lastPredictionPlayerSighting == null
 			|| !shouldAllowFlagging())
 		{
 			return;
 		}
 
-		disableAndSetColorOnFlaggingPanel(doFlag);
+		disableAndSetColorOnFlaggingPanel(flag);
 
 		CaseInsensitiveString wrappedName = normalizeAndWrapPlayerName(lastPredictionPlayerSighting.getPlayerName());
-		Map<CaseInsensitiveString, Boolean> flagMap = plugin.getFlaggedPlayers();
-		flagMap.put(wrappedName, doFlag);
+		final PersistentFlagFeedbackModel feedbackInfo = plugin.getFlaggedFeedbackedPlayers()
+			.computeIfAbsent(wrappedName, k -> new PersistentFlagFeedbackModel());
+
+		FlagResponse previousFlag = feedbackInfo.getFlag();
+		Instant previousModified = feedbackInfo.getLastModified();
+		feedbackInfo.setFlag(flag);
+		feedbackInfo.setLastModified(Instant.now());
 
 		// Didn't want to flag? Work is done!
-		if (!doFlag)
+		if (flag != FlagResponse.BOT)
 		{
 			return;
 		}
@@ -1426,7 +1446,8 @@ public class BotDetectorPanel extends PluginPanel
 				{
 					message = "Error sending your bot flag for '%s'.";
 					// Didn't work so remove from flagged map
-					flagMap.remove(wrappedName);
+					feedbackInfo.setFlag(previousFlag);
+					feedbackInfo.setLastModified(previousModified);
 					if (stillSame)
 					{
 						resetFlaggingPanel();
@@ -1514,19 +1535,22 @@ public class BotDetectorPanel extends PluginPanel
 
 	/**
 	 * Disables the flagging panel and sets a color on either the 'Yes' or 'No' button according to the parameter.
-	 * @param flagged If true, highlight the 'Yes' button, otherwise highlight the 'No' button.
+	 * @param flagged Highlight the 'Yes' or 'No' button depending on the value.
 	 */
-	private void disableAndSetColorOnFlaggingPanel(boolean flagged)
+	private void disableAndSetColorOnFlaggingPanel(FlagResponse flagged)
 	{
 		flaggingYesButton.setEnabled(false);
 		flaggingNoButton.setEnabled(false);
-		if (flagged)
+		switch (flagged)
 		{
-			flaggingYesButton.setBackground(POSITIVE_BUTTON_COLOR);
-		}
-		else
-		{
-			flaggingNoButton.setBackground(NEGATIVE_BUTTON_COLOR);
+			case BOT:
+				flaggingYesButton.setBackground(POSITIVE_BUTTON_COLOR);
+				break;
+			case NOT_BOT:
+				flaggingNoButton.setBackground(NEGATIVE_BUTTON_COLOR);
+				break;
+			default:
+				break;
 		}
 	}
 
