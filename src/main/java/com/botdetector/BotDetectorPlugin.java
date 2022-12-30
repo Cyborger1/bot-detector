@@ -32,6 +32,7 @@ import com.botdetector.model.AuthToken;
 import com.botdetector.model.AuthTokenPermission;
 import com.botdetector.model.AuthTokenType;
 import com.botdetector.model.CaseInsensitiveString;
+import com.botdetector.model.FeedbackValue;
 import com.botdetector.model.PlayerSighting;
 import com.botdetector.model.PlayerStats;
 import com.botdetector.model.PlayerStatsType;
@@ -46,6 +47,8 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Table;
 import com.google.common.collect.Tables;
 import com.google.common.primitives.Ints;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import java.awt.Toolkit;
 import java.awt.Color;
 import java.awt.datatransfer.DataFlavor;
@@ -57,6 +60,7 @@ import java.text.DecimalFormat;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.time.temporal.TemporalAmount;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
@@ -68,6 +72,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import javax.swing.JEditorPane;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
@@ -120,6 +125,7 @@ import net.runelite.client.util.Text;
 import com.google.inject.Provides;
 import org.apache.commons.lang3.StringUtils;
 import static com.botdetector.model.CaseInsensitiveString.wrap;
+import org.apache.commons.lang3.tuple.ImmutablePair;
 
 @Slf4j
 @PluginDescriptor(
@@ -223,6 +229,9 @@ public class BotDetectorPlugin extends Plugin
 
 	@Inject
 	private ChatMessageManager chatMessageManager;
+
+	@Inject
+	private Gson gson;
 
 	@Inject
 	private BotDetectorClient detectorClient;
@@ -1206,6 +1215,82 @@ public class BotDetectorPlugin extends Plugin
 			config.predictOptionFlaggedColor() : config.predictOptionDefaultColor();
 
 		return prepend != null ? ColorUtil.prependColorTag(option, prepend) : option;
+	}
+
+	private void saveFlaggedFeedbacked()
+	{
+		if (isCurrentWorldBlocked)
+		{
+			return;
+		}
+
+		Instant now = Instant.now();
+		Map<String, ImmutablePair<Boolean, Instant>> flagsToPersist =
+			flaggedPlayers.entrySet().stream().collect(Collectors.toMap(
+				e -> e.getKey().getStr(),
+				e -> new ImmutablePair<>(e.getValue(), now)));
+
+		configManager.setRSProfileConfiguration(BotDetectorConfig.CONFIG_GROUP, BotDetectorConfig.PERSISTED_FLAGGED_KEY, gson.toJson(flagsToPersist));
+	}
+
+	private void loadFlaggedFeedbacked()
+	{
+		Map<String, ImmutablePair<Boolean, Instant>> flagged = retrieveFlagged();
+		Map<String, ImmutablePair<FeedbackPredictionLabel, Instant>> feedback = retrieveFeedbacks();
+
+		Instant sevenDaysAgo = Instant.now().minus(7, ChronoUnit.DAYS);
+
+		if (flagged != null)
+		{
+			flagged.forEach((k, v) ->
+			{
+				if (sevenDaysAgo.isBefore(v.getValue()))
+				{
+					flaggedPlayers.putIfAbsent(wrap(k), v.getKey());
+				}
+			});
+		}
+
+		if (feedback != null)
+		{
+			feedback.forEach((k, v) ->
+			{
+				if (sevenDaysAgo.isBefore(v.getValue()))
+				{
+					feedbackedPlayers.putIfAbsent(wrap(k), v.getKey());
+				}
+			});
+		}
+	}
+
+	private Map<String, ImmutablePair<Boolean, Instant>> retrieveFlagged()
+	{
+		String json = configManager.getConfiguration(BotDetectorConfig.CONFIG_GROUP,
+			BotDetectorConfig.PERSISTED_FLAGGED_KEY + "." + client.getAccountHash());
+
+		try
+		{
+			return gson.fromJson(json, new TypeToken<Map<String, ImmutablePair<Boolean, Instant>>>(){}.getType());
+		}
+		catch (Exception e)
+		{
+			return null;
+		}
+	}
+
+	private Map<String, ImmutablePair<FeedbackPredictionLabel, Instant>> retrieveFeedbacks()
+	{
+		String json = configManager.getConfiguration(BotDetectorConfig.CONFIG_GROUP,
+			BotDetectorConfig.PERSISTED_FEEDBACK_KEY + "." + client.getAccountHash());
+
+		try
+		{
+			return gson.fromJson(json, new TypeToken<Map<String, ImmutablePair<FeedbackPredictionLabel, Instant>>>(){}.getType());
+		}
+		catch (Exception e)
+		{
+			return null;
+		}
 	}
 
 	/**

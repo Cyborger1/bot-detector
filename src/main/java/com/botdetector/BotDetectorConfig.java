@@ -49,6 +49,9 @@ public interface BotDetectorConfig extends Config
 	String SHOW_FEEDBACK_TEXTBOX = "showFeedbackTextbox";
 	String SHOW_DISCORD_VERIFICATION_ERRORS = "showDiscordVerificationErrors";
 	String ANONYMOUS_UUID_KEY = "anonymousUUID";
+	String PERSIST_FLAGGED_KEY = "persistFlagged";
+	String PERSISTED_FLAGGED_KEY = "flaggedNames";
+	String PERSISTED_FEEDBACK_KEY = "feedbackedNames";
 
 	int AUTO_SEND_MINIMUM_MINUTES = 5;
 	int AUTO_SEND_MAXIMUM_MINUTES = 360;
@@ -258,6 +261,18 @@ public interface BotDetectorConfig extends Config
 		warning = "Enabling this setting may cause issues with other plugins that rely on the 'Report' option being unchanged."
 	)
 	default boolean applyPredictColorsOnReportOption()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		position = 7,
+		keyName = PERSIST_FLAGGED_KEY,
+		name = "Persistent Flags/Feedback",
+		description = "Persists flags and feedbacked players locally through gameplay sessions for up to 7 days.",
+		section = predictSection
+	)
+	default boolean persistFlagged()
 	{
 		return false;
 	}
